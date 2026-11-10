@@ -36,7 +36,7 @@ st.divider()
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-CSV_PATH = BASE_DIR / "temperature(1).csv"
+CSV_PATH = BASE_DIR / "temperature.csv"
 
 
 # ==========================================
