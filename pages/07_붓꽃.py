@@ -34,46 +34,105 @@ st.divider()
 
 @st.cache_data
 def load_data():
-    file_path = Path(__file__).resolve().parent / "Iris.csv"
+
+    # pages 폴더의 상위 폴더에서 CSV 찾기
+    file_path = (
+        Path(__file__).resolve().parent.parent
+        / "Iris.csv"
+    )
+
+    if not file_path.exists():
+        raise FileNotFoundError(
+            f"CSV 파일을 찾을 수 없습니다: {file_path}"
+        )
 
     try:
-        data = pd.read_csv(file_path, encoding="cp949")
+        data = pd.read_csv(
+            file_path,
+            encoding="utf-8-sig"
+        )
     except UnicodeDecodeError:
-        data = pd.read_csv(file_path, encoding="utf-8-sig")
+        data = pd.read_csv(
+            file_path,
+            encoding="cp949"
+        )
 
     return data
 
+
 try:
     df = load_data()
+
 except Exception as e:
     st.error(f"CSV 파일을 불러오지 못했습니다: {e}")
     st.stop()
 
-# 필요한 열 확인
-required_columns = ["꽃잎길이", "꽃잎너비", "품종"]
+# ----------------------------------
+# 3. 데이터 열 확인 및 전처리
+# ----------------------------------
 
-if not all(col in df.columns for col in required_columns):
-    st.error("CSV 파일에 꽃잎길이, 꽃잎너비, 품종 열이 필요합니다.")
+# 실제 CSV의 열 이름에 맞게 공백 제거
+df.columns = df.columns.astype(str).str.strip()
+
+# 한글 또는 일반적인 영문 열 이름 지원
+column_aliases = {
+    "꽃잎길이": [
+        "꽃잎길이", "PetalLengthCm", "petal_length"
+    ],
+    "꽃잎너비": [
+        "꽃잎너비", "PetalWidthCm", "petal_width"
+    ],
+    "품종": [
+        "품종", "Species", "species"
+    ]
+}
+
+selected_columns = {}
+
+for standard_name, aliases in column_aliases.items():
+    found = next(
+        (col for col in aliases if col in df.columns),
+        None
+    )
+
+    if found is None:
+        st.error(
+            f"'{standard_name}'에 해당하는 열을 찾을 수 없습니다. "
+            f"현재 열 이름: {list(df.columns)}"
+        )
+        st.stop()
+
+    selected_columns[standard_name] = found
+
+data = df[
+    [
+        selected_columns["꽃잎길이"],
+        selected_columns["꽃잎너비"],
+        selected_columns["품종"]
+    ]
+].copy()
+
+data.columns = ["꽃잎길이", "꽃잎너비", "품종"]
+
+data["꽃잎길이"] = pd.to_numeric(
+    data["꽃잎길이"], errors="coerce"
+)
+
+data["꽃잎너비"] = pd.to_numeric(
+    data["꽃잎너비"], errors="coerce"
+)
+
+data["품종"] = data["품종"].astype("string").str.strip()
+
+data = data.dropna().copy()
+data = data[data["품종"] != ""]
+
+if len(data) == 0 or data["품종"].nunique() < 2:
+    st.error("학습에 필요한 데이터 또는 품종이 부족합니다.")
     st.stop()
 
-# ----------------------------------
-# 3. 데이터 전처리
-# ----------------------------------
-
-df = df[required_columns].copy()
-
-df["꽃잎길이"] = pd.to_numeric(
-    df["꽃잎길이"], errors="coerce"
-)
-
-df["꽃잎너비"] = pd.to_numeric(
-    df["꽃잎너비"], errors="coerce"
-)
-
-df = df.dropna()
-
-X = df[["꽃잎길이", "꽃잎너비"]]
-y = df["품종"].astype(str)
+X = data[["꽃잎길이", "꽃잎너비"]]
+y = data["품종"].astype(str)
 
 # ----------------------------------
 # 4. 학습 데이터와 테스트 데이터 분리
@@ -88,11 +147,12 @@ X_train, X_test, y_train, y_test = train_test_split(
 )
 
 # ----------------------------------
-# 5. 랜덤 포레스트 모델 생성
+# 5. 랜덤 포레스트 모델 학습
 # ----------------------------------
 
 @st.cache_resource
 def train_model(X_train, y_train):
+
     model = RandomForestClassifier(
         n_estimators=200,
         random_state=42,
@@ -103,6 +163,7 @@ def train_model(X_train, y_train):
 
     return model
 
+
 model = train_model(X_train, y_train)
 
 # 정확도 계산
@@ -110,20 +171,20 @@ y_pred = model.predict(X_test)
 accuracy = accuracy_score(y_test, y_pred)
 
 # ----------------------------------
-# 6. 모델 성능 표시
+# 6. 모델 학습 결과
 # ----------------------------------
 
 st.subheader("🤖 AI 모델 학습 결과")
 
 col1, col2, col3 = st.columns(3)
 
-col1.metric("전체 데이터", f"{len(df)}개")
+col1.metric("전체 데이터", f"{len(data)}개")
 col2.metric("학습 데이터", f"{len(X_train)}개")
 col3.metric("예측 정확도", f"{accuracy * 100:.1f}%")
 
 st.caption(
-    "정확도는 테스트 데이터 30개에 대한 결과이며, "
-    "새로운 데이터에서의 정확도를 보장하지는 않습니다."
+    "테스트 데이터에 대한 정확도이며 "
+    "새로운 데이터의 정확도를 보장하지는 않습니다."
 )
 
 st.divider()
@@ -164,6 +225,7 @@ input_data = pd.DataFrame(
 )
 
 prediction = model.predict(input_data)[0]
+
 probabilities = model.predict_proba(input_data)[0]
 
 st.divider()
@@ -173,8 +235,8 @@ st.subheader("🔮 AI 예측 결과")
 st.success(f"🌸 예측된 붓꽃 품종: {prediction}")
 
 st.write(
-    f"입력한 꽃잎 길이는 **{petal_length}cm**, "
-    f"꽃잎 너비는 **{petal_width}cm**입니다."
+    f"꽃잎 길이: **{petal_length}cm** / "
+    f"꽃잎 너비: **{petal_width}cm**"
 )
 
 st.write("### 품종별 예측 확률")
@@ -185,7 +247,8 @@ prob_df = pd.DataFrame({
 })
 
 prob_df = prob_df.sort_values(
-    "예측 확률", ascending=False
+    "예측 확률",
+    ascending=False
 )
 
 st.bar_chart(
@@ -200,15 +263,14 @@ for _, row in prob_df.iterrows():
     )
 
 # ----------------------------------
-# 9. 시각화 준비
+# 9. 품종별 색상 설정
 # ----------------------------------
 
 st.divider()
 
 st.subheader("📊 꽃잎 길이와 너비에 따른 품종 분포")
 
-# 각 품종별 색상
-species = sorted(y.unique())
+species = list(model.classes_)
 
 color_list = [
     "#FF9999",
@@ -225,18 +287,29 @@ cmap = ListedColormap([
     colors[name] for name in species
 ])
 
-# 그래프 범위
-x_min = min(X["꽃잎길이"].min() - 0.5,
-            petal_length - 0.5)
+# ----------------------------------
+# 10. AI 분류 영역 계산
+# ----------------------------------
 
-x_max = max(X["꽃잎길이"].max() + 0.5,
-            petal_length + 0.5)
+x_min = min(
+    X["꽃잎길이"].min() - 0.5,
+    petal_length - 0.5
+)
 
-y_min = min(X["꽃잎너비"].min() - 0.3,
-            petal_width - 0.3)
+x_max = max(
+    X["꽃잎길이"].max() + 0.5,
+    petal_length + 0.5
+)
 
-y_max = max(X["꽃잎너비"].max() + 0.3,
-            petal_width + 0.3)
+y_min = min(
+    X["꽃잎너비"].min() - 0.3,
+    petal_width - 0.3
+)
+
+y_max = max(
+    X["꽃잎너비"].max() + 0.3,
+    petal_width + 0.3
+)
 
 xx, yy = np.meshgrid(
     np.linspace(x_min, x_max, 300),
@@ -248,12 +321,10 @@ grid_data = pd.DataFrame({
     "꽃잎너비": yy.ravel()
 })
 
-# 각 위치의 예측 품종
 Z = model.predict(grid_data)
 
-# 품종을 숫자로 변환
 species_to_num = {
-    name: i for i, name in enumerate(model.classes_)
+    name: i for i, name in enumerate(species)
 }
 
 Z_num = np.array([
@@ -261,12 +332,12 @@ Z_num = np.array([
 ]).reshape(xx.shape)
 
 # ----------------------------------
-# 10. 그래프 그리기
+# 11. 그래프 그리기
 # ----------------------------------
 
 fig, ax = plt.subplots(figsize=(10, 7))
 
-# AI의 분류 영역
+# AI 분류 영역
 ax.contourf(
     xx,
     yy,
@@ -278,7 +349,8 @@ ax.contourf(
 
 # 실제 데이터 표시
 for name in species:
-    subset = df[df["품종"] == name]
+
+    subset = data[data["품종"] == name]
 
     ax.scatter(
         subset["꽃잎길이"],
@@ -290,7 +362,7 @@ for name in species:
         s=45
     )
 
-# 사용자가 입력한 값: 노란색 별
+# 사용자가 입력한 값 표시
 ax.scatter(
     petal_length,
     petal_width,
@@ -303,7 +375,7 @@ ax.scatter(
     zorder=10
 )
 
-# 입력값 옆에 예측 결과 표시
+# 예측 품종 표시
 ax.annotate(
     f"Predicted: {prediction}",
     (petal_length, petal_width),
@@ -318,8 +390,8 @@ ax.annotate(
     )
 )
 
-ax.set_xlabel("Petal Length (cm)", fontsize=12)
-ax.set_ylabel("Petal Width (cm)", fontsize=12)
+ax.set_xlabel("꽃잎 길이 (cm)", fontsize=12)
+ax.set_ylabel("꽃잎 너비 (cm)", fontsize=12)
 
 ax.set_title(
     "Iris Species Classification",
@@ -333,7 +405,7 @@ st.pyplot(fig)
 plt.close(fig)
 
 # ----------------------------------
-# 11. 분류 이유 설명
+# 12. 분류 이유 설명
 # ----------------------------------
 
 st.divider()
@@ -342,35 +414,35 @@ st.subheader("🔍 AI는 왜 이 품종으로 분류했을까?")
 
 st.write(
     "그래프의 배경색은 랜덤 포레스트가 "
-    "각 위치에서 예측하는 품종을 나타냅니다."
+    "각 위치에서 예측하는 붓꽃 품종을 나타냅니다."
 )
 
 st.write(
     "⭐ 노란색 별은 사용자가 입력한 꽃잎의 위치입니다."
 )
 
-st.write(
-    f"입력한 위치가 AI의 분류 영역 중 "
-    f"**{prediction} 영역**에 있으므로 "
-    f"해당 품종으로 예측되었습니다."
+st.success(
+    f"입력한 위치는 AI의 분류 영역 중 "
+    f"{prediction} 영역에 해당합니다."
 )
 
 st.write("### 🌈 품종별 분류 영역")
 
 for name in species:
+
     st.markdown(
-        f"<span style='color:{colors[name]};'>"
-        f"●</span> **{name}**",
+        f"<span style='color:{colors[name]};'>●</span> "
+        f"**{name}**",
         unsafe_allow_html=True
     )
 
 st.info(
-    "참고: 배경색은 모델의 분류 영역을 보여주며, "
-    "실제 예측은 랜덤 포레스트의 여러 결정 트리 투표를 "
-    "종합하여 이루어집니다."
+    "랜덤 포레스트는 여러 결정 트리의 예측을 종합하여 "
+    "최종 품종을 결정합니다. 그래프의 배경색은 "
+    "모델이 학습한 분류 영역을 시각화한 것입니다."
 )
 
 st.caption(
-    "본 프로그램은 Iris 데이터셋의 꽃잎 길이와 너비 "
-    "두 가지 특성만 사용하여 품종을 예측합니다."
+    "본 프로그램은 꽃잎 길이와 꽃잎 너비 "
+    "두 가지 특성을 사용하여 붓꽃 품종을 예측합니다."
 )
