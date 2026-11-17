@@ -41,7 +41,7 @@ def load_data():
         folder.parent / "flavors_of_cacao.csv"
     ]
 
-    # 업로드 파일명이 flavors_of_cacao[1].csv인 경우도 탐색
+    # 업로드 파일명이 flavors_of_cacao.csv인 경우도 탐색
     possible_paths += list(folder.glob("flavors_of_cacao*.csv"))
     possible_paths += list(folder.parent.glob("flavors_of_cacao*.csv"))
 
