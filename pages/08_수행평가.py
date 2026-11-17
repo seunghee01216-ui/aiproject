@@ -59,7 +59,7 @@ def load_data():
     folder = Path(__file__).resolve().parent
     parent_folder = folder.parent
 
-    csv_path = parent_folder / "flavors_of_cacao[1](1).csv"
+    csv_path = parent_folder / "flavors_of_cacao.csv"
 
     if not csv_path.exists():
         st.error("CSV 파일을 찾을 수 없습니다.")
